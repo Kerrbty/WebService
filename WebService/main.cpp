@@ -3,43 +3,34 @@
 #include <WinSock2.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "AnalyzeRequestHttp.h"
+#include "ServiceProvider.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
 // http协议服务 
-DWORD CALLBACK DoService(LPVOID lpThreadParameter)
+static DWORD CALLBACK DoService(LPVOID lpThreadParameter)
 {
-    __try
-    {
-        DWORD dwsize = 4096;
-        SOCKET se = (SOCKET)lpThreadParameter;
-        char* buf=(char*)malloc(dwsize);
+    DWORD dwsize = 4096;
+    SOCKET s = (SOCKET)lpThreadParameter;
+    char* buf=(char*)malloc(dwsize);
 
-        // 接收请求 
-        ZeroMemory(buf, dwsize);
-        recv(se, buf, dwsize, 0);
+    // 接收请求,解析头信息 
+    ZeroMemory(buf, dwsize);
+    RequestHeaderInfo request(s);
+//     printf("%s\n", request.GetUserAgent());
 
-        // 解析头信息 
+    // 调用对应的资源文件,回复信息 
+    ResponseData(s, &request);
 
-        // 调用对应的资源文件 
-
-        // 发送头部 
-
-        // 发送body 
-
-        // 关闭连接 
-        closesocket(se);
-        free(buf);
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        printf("something is error\n");
-    }
+    // 关闭连接 
+    closesocket(s);
+    free(buf);
     return 0;
 }
 
 // 监听80端口进行服务 
-INT WebService()
+static INT WebService()
 {
     INT bRetVal = 1;
     WSADATA WsData; 

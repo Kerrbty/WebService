@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WebService", "WebService\WebService.vcproj", "{4675D4B1-7B76-4045-92DE-767D45717515}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestCGI", "TestCGI\TestCGI.vcproj", "{E8EE9897-EAE7-42A0-ADC3-E7F40F956BA3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -13,6 +15,10 @@ Global
 		{4675D4B1-7B76-4045-92DE-767D45717515}.Debug|Win32.Build.0 = Debug|Win32
 		{4675D4B1-7B76-4045-92DE-767D45717515}.Release|Win32.ActiveCfg = Release|Win32
 		{4675D4B1-7B76-4045-92DE-767D45717515}.Release|Win32.Build.0 = Release|Win32
+		{E8EE9897-EAE7-42A0-ADC3-E7F40F956BA3}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E8EE9897-EAE7-42A0-ADC3-E7F40F956BA3}.Debug|Win32.Build.0 = Debug|Win32
+		{E8EE9897-EAE7-42A0-ADC3-E7F40F956BA3}.Release|Win32.ActiveCfg = Release|Win32
+		{E8EE9897-EAE7-42A0-ADC3-E7F40F956BA3}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
