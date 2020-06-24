@@ -45,6 +45,10 @@ public:
     {
         return m_content_type;
     }
+    const char* GetCommandLine()
+    {
+        return m_request_command;
+    }
 
 protected:
     // 解析数据 
@@ -64,6 +68,7 @@ private:
 
     // POST 或者 GET 跟的对象 
     char* m_request_file;
+    char* m_request_command;
 
     // 其他参数数据 
     char* m_accept_language;

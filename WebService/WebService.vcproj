@@ -175,6 +175,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\common.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\main.cpp"
 				>
 			</File>
@@ -190,6 +194,10 @@
 			>
 			<File
 				RelativePath=".\AnalyzeRequestHttp.h"
+				>
+			</File>
+			<File
+				RelativePath=".\common.h"
 				>
 			</File>
 			<File

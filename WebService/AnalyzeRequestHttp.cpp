@@ -13,6 +13,7 @@ RequestHeaderInfo::RequestHeaderInfo(SOCKET s)
     m_post_data = NULL;
 
     m_request_file = NULL;
+    m_request_command = NULL;
 
     m_accept_language = NULL;
     m_accept_encoding = NULL;
@@ -155,6 +156,22 @@ bool RequestHeaderInfo::AnalyzeHttpData(SOCKET s)
             {
                 m_request_file[i] = m_linedata[skip+i];
                 i++;
+            }
+
+            // 参数获取(不转编码,等用的时候再处理) 
+            char* cmdstr = strchr(m_request_file, '?');
+            if (cmdstr)
+            {
+                *cmdstr++ = '\0';
+                m_request_command = cmdstr;
+                while(*cmdstr != '\0')
+                {
+                    if (*cmdstr == '&')
+                    {
+                        *cmdstr = ' ';
+                    }
+                    cmdstr++;
+                }
             }
         }
     }
