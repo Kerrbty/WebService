@@ -109,7 +109,7 @@ bool RequestHeaderInfo::GetCompare()
         // 略过空格 
         do{
             p++;
-        }while (*p!='\0' && *p!=' ');
+        }while (*p!='\0' && *p==' ');
         strcpy(m_value, p);
         return true;
     }
@@ -165,6 +165,7 @@ bool RequestHeaderInfo::AnalyzeMethod()
         {
             int i=0;
             memset(m_request_path, 0, uiLen);
+            // 获取路径 
             while(m_linedata[skip+i] != ' ' && m_linedata[skip+i] != '\0')
             {
                 m_request_path[i] = m_linedata[skip+i];

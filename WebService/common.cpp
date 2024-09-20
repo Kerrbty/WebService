@@ -57,3 +57,32 @@ char* UrlDecode(const char* src, unsigned int srclen, char* dst, unsigned int ds
     }
     return dst;
 }
+
+// Êý¾Ý¼ÆËãsha1 
+bool calcBufferSha1(unsigned char* buffer, unsigned long len, unsigned char out[20])
+{
+    bool retval = false;
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    DWORD error = 0;
+    do
+    {
+        if( !CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT) ) 
+        {
+            break;
+        }
+        CryptCreateHash(hProv, CALG_SHA1, NULL, 0, &hHash);
+        DWORD ilen = 20;
+        if( CryptHashData(hHash, buffer, len, 0) && 
+            CryptGetHashParam(hHash, HP_HASHVAL, (PBYTE)out, &ilen, 0) )
+        {
+            retval = true;
+        }
+    }while(0);
+
+    if(hHash) 
+        CryptDestroyHash(hHash);
+    if(hProv) 
+        CryptReleaseContext(hProv, 0);
+    return retval;
+}

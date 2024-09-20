@@ -176,6 +176,10 @@ static DWORD StringToDword(PTCH str)
 
 INT _tmain(INT argc, TCHAR* argv[])
 {
+    WebService();
+    return 0;
+
+    /*
     BOOL bRunServer = FALSE;
     DWORD ppid = 0;
     for (int i=1; i<argc; i++)
@@ -207,5 +211,6 @@ INT _tmain(INT argc, TCHAR* argv[])
         // ¼à¿Øweb·þÎñ 
         DaemonProcess(ppid, TEXT("\" /runserver /pid %u"));
     }
+    */
     return 0;
 }

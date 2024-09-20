@@ -1,9 +1,11 @@
 #include "ServiceProvider.h"
+#include "Base64/Base64.h"
 #include "common.h"
 #include <Shlwapi.h>
 #include <stdio.h>
 #pragma comment(lib, "shlwapi")
 
+#define WEBSOCKET_GUID   "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 #define WEB_DIR     "www"
 #define CGI_DIR     "www\\cgi"
 #define CGI_START_SIZE  4096
@@ -26,7 +28,7 @@ static bool ChgLocalPath(const char* szPathFile, const char* szDirName, char* sz
         {
             GetModuleFileNameA(GetModuleHandle(NULL), g_web_root_path, MAX_PATH);
             PathRemoveFileSpecA(g_web_root_path);
-            strcat(g_web_root_path, "\\");
+            strcat_s(g_web_root_path, MAX_PATH, "\\");
             printf("local web dir: %s%s\n", g_web_root_path, WEB_DIR);
         }
     }
@@ -38,9 +40,9 @@ static bool ChgLocalPath(const char* szPathFile, const char* szDirName, char* sz
 
     // 拼凑完整路径 
     memset(szOutPath, 0, dwlen);
-    strncpy(szOutPath, g_web_root_path, dwlen);
-    strncat(szOutPath, szDirName, dwlen);
-    int len = strlen(szOutPath);
+    strcpy_s(szOutPath, dwlen, g_web_root_path);
+    strcat_s(szOutPath, dwlen, szDirName);
+    unsigned int len = strlen(szOutPath);
     int i=0;
     while(len < dwlen)
     {
@@ -103,9 +105,9 @@ static bool IsRequestCGIFile(const char* szPathFile)
     if( ChgLocalPath(szPathFile, CGI_DIR, fullpath, needlen) )
     {
 #ifdef _DEBUG
-        strncat(fullpath, "_d.cgi", needlen);
+        strcat_s(fullpath, needlen, "_d.cgi");
 #else
-        strncat(fullpath, ".cgi", needlen);
+        strcat_s(fullpath, needlen, ".cgi");
 #endif
         // 读取文件 
         HANDLE hFile = CreateFileA(fullpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -146,11 +148,15 @@ static const char* Mons[] = {
     "Dec",
 };
 
-// 服务器固定的信息 
-static void SendServiceInfo(SOCKET s)
+// 服务端程序信息,当前时间  
+static void SendServiceInfo(SOCKET s, bool isWS = false)
 {
     // 服务器工具信息 
     const char* service_info = "Server: WebSercice/1.0\r\n";
+    if (isWS == true)
+    {
+        const char* service_info = "Server: WebSercice/1.1 websockets/1.0.0\r\n";
+    }
     send(s, service_info, strlen(service_info), 0);
 
     // 应答时间 
@@ -165,6 +171,12 @@ static void SendServiceInfo(SOCKET s)
         send(s, data, len, 0);
         MFREE(data);
     }
+}
+
+// 服务端信息时间,位置，长链接 
+static void SendWebService(SOCKET s)
+{
+    SendServiceInfo(s);
 
     // 长连接 
     const char* keep_alive = "Connection: Keep-Alive\r\n";
@@ -218,35 +230,35 @@ static bool SendFileType(SOCKET s, const char* szPathFile)
                 if (fileext)
                 {
                     // 具体扩充 访问 https://www.runoob.com/http/http-content-type.html 
-                    if (stricmp(fileext, ".htm") == 0 || stricmp(fileext, ".html") == 0 )
+                    if (_stricmp(fileext, ".htm") == 0 || _stricmp(fileext, ".html") == 0 )
                     {
                         sztype = "Content-Type: text/html;charset=utf-8\r\n";
                     }
-                    else if (stricmp(fileext, ".txt") == 0)
+                    else if (_stricmp(fileext, ".txt") == 0)
                     {
                         sztype = "Content-Type: text/plain\r\n";
                     }
-                    else if (stricmp(fileext, ".js") == 0)
+                    else if (_stricmp(fileext, ".js") == 0)
                     {
                         sztype = "Content-Type: application/javascript\r\n";
                     }
-                    else if (stricmp(fileext, ".css") == 0)
+                    else if (_stricmp(fileext, ".css") == 0)
                     {
                         sztype = "Content-Type: text/css\r\n";
                     }
-                    else if (stricmp(fileext, ".png") == 0)
+                    else if (_stricmp(fileext, ".png") == 0)
                     {
                         sztype = "Content-Type: image/png\r\n";
                     }
-                    else if (stricmp(fileext, ".jpg") == 0)
+                    else if (_stricmp(fileext, ".jpg") == 0)
                     {
                         sztype = "Content-Type: image/jpeg\r\n";
                     }
-                    else if (stricmp(fileext, ".gif") == 0)
+                    else if (_stricmp(fileext, ".gif") == 0)
                     {
                         sztype = "Content-Type: image/gif\r\n";
                     }
-                    else if (stricmp(fileext, ".ico") == 0)
+                    else if (_stricmp(fileext, ".ico") == 0)
                     {
                         sztype = "Content-Type: image/x-icon\r\n";
                     }
@@ -326,9 +338,9 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
     if( ChgLocalPath(szPathFile, CGI_DIR, fullpath+1, needlen) )
     {
 #ifdef _DEBUG
-        strncat(fullpath, "_d.cgi\"", needlen);
+        strcat_s(fullpath, needlen, "_d.cgi\"");
 #else
-        strncat(fullpath, ".cgi\"", needlen);
+        strcat_s(fullpath, needlen, ".cgi\"");
 #endif
         FILE* fp = NULL;
         if (szCommandLine)
@@ -336,7 +348,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
             char* NewRunCmd = (char*)malloc(strlen(fullpath)+strlen(szCommandLine)+8);
             if (NewRunCmd)
             {
-                sprintf(NewRunCmd, "%s %s", fullpath, szCommandLine);
+                wsprintfA(NewRunCmd, "%s %s", fullpath, szCommandLine);
                 fp = _popen(NewRunCmd, "rt");
                 MFREE(NewRunCmd);
             }
@@ -418,6 +430,52 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
     return bret;
 }
 
+// websocket 处理 
+static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
+{
+    const char* pWebSocketKey = request->GetHeader("Sec-WebSocket-Key");
+    if (pWebSocketKey == NULL)
+    {
+        return false;
+    }
+
+    int len = strlen(pWebSocketKey);
+    len += sizeof(WEBSOCKET_GUID) + 2;
+    char* serial_websocket_key = (char*)malloc(len);
+    if (serial_websocket_key)
+    {
+        const char* response_code = "HTTP/1.1 101 Switching Protocols\r\n";
+        send(s, response_code, strlen(response_code), 0);
+        
+        const char* upgrade = "Upgrade: websocket\r\nConnection: Upgrade\r\n";
+        send(s, upgrade, strlen(upgrade), 0);
+
+        const char* sec_key = "Sec-WebSocket-Accept: ";
+        send(s, sec_key, strlen(sec_key), 0);
+        unsigned char data[24] = {0};
+        strcpy_s(serial_websocket_key, 24, pWebSocketKey);
+        strcat_s(serial_websocket_key, 24, WEBSOCKET_GUID);
+        calcBufferSha1((unsigned char*)serial_websocket_key, len, data);
+        memset(serial_websocket_key, 0, len);
+        int outlen = Base64_encode((char*)data, 20, serial_websocket_key, len);
+        send(s, serial_websocket_key, outlen, 0);
+        send(s, "\r\n", 2, 0);
+
+        SendServiceInfo(s, true);
+        send(s, "\r\n", 2, 0);
+    }
+    return true;
+}
+
+// websocket 各种处理 
+void MonitorWebSocket(SOCKET s)
+{
+    while(TRUE)
+    {
+        ;
+    }
+}
+
 // 服务器完成请求 
 bool ResponseData(SOCKET s, RequestHeaderInfo *request)
 {
@@ -448,14 +506,22 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
     }
     char* newrequestfile = UrlDecode(requestfile, len, newFile, len+MAX_PATH);
 
-    if (IsRequestStaticFile(newrequestfile))
+    const char* pupgrade = request->GetHeader("Connection");
+    if ( pupgrade && _stricmp(pupgrade, "Upgrade")==0 )
+    {
+        if ( UpgradeSocket(s, request) )
+        {
+            MonitorWebSocket(s);
+        }
+    }
+    else if (IsRequestStaticFile(newrequestfile))
     {
         // 成功信息 
         const char* http_ok = "HTTP/1.1 200 OK\r\n";
         send(s, http_ok, strlen(http_ok), 0);
 
         // 服务器信息 
-        SendServiceInfo(s);
+        SendWebService(s);
 
         // 发送文件类型 
         SendFileType(s, newrequestfile);
@@ -470,7 +536,7 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
         send(s, http_ok, strlen(http_ok), 0);
 
         // 发送文件类型 
-        SendServiceInfo(s);
+        SendWebService(s);
 
         // 执行CGI并返回数据 
         DoSendCGIResult(s, newrequestfile, request->GetCommandLine());
@@ -482,7 +548,7 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
         send(s, http_404, strlen(http_404), 0);
 
         // 服务器信息 
-        SendServiceInfo(s);
+        SendWebService(s);
 
         // 发送文本类型 
         SendFileType(s, "/404.htm");

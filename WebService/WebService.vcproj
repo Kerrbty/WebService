@@ -215,6 +215,18 @@
 			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
 			>
 		</Filter>
+		<Filter
+			Name="Base64"
+			>
+			<File
+				RelativePath=".\Base64\Base64.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\Base64\Base64.h"
+				>
+			</File>
+		</Filter>
 	</Files>
 	<Globals>
 	</Globals>
