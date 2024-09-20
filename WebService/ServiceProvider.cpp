@@ -3,6 +3,7 @@
 #include "common.h"
 #include <Shlwapi.h>
 #include <stdio.h>
+#include <time.h>
 #pragma comment(lib, "shlwapi")
 
 #define WEBSOCKET_GUID   "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -153,9 +154,9 @@ static void SendServiceInfo(SOCKET s, bool isWS = false)
 {
     // 服务器工具信息 
     const char* service_info = "Server: WebSercice/1.0\r\n";
-    if (isWS == true)
+    if (isWS)
     {
-        const char* service_info = "Server: WebSercice/1.1 websockets/1.0.0\r\n";
+        service_info = "Server: WebSercice/1.1 websockets/1.0.0\r\n";
     }
     send(s, service_info, strlen(service_info), 0);
 
@@ -453,9 +454,9 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
         const char* sec_key = "Sec-WebSocket-Accept: ";
         send(s, sec_key, strlen(sec_key), 0);
         unsigned char data[24] = {0};
-        strcpy_s(serial_websocket_key, 24, pWebSocketKey);
-        strcat_s(serial_websocket_key, 24, WEBSOCKET_GUID);
-        calcBufferSha1((unsigned char*)serial_websocket_key, len, data);
+        strcpy_s(serial_websocket_key, len, pWebSocketKey);
+        strcat_s(serial_websocket_key, len, WEBSOCKET_GUID);
+        calcBufferSha1((unsigned char*)serial_websocket_key, strlen(serial_websocket_key), data);
         memset(serial_websocket_key, 0, len);
         int outlen = Base64_encode((char*)data, 20, serial_websocket_key, len);
         send(s, serial_websocket_key, outlen, 0);
@@ -468,12 +469,178 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 }
 
 // websocket 各种处理 
+char* recv_websocket(SOCKET s)
+{
+    // 标志位 FIN = 0x80 | Opcode = 0x01 
+    unsigned char ch = '\0';
+    if (recv(s, (char*)&ch, 1, 0) < 0)
+    {
+        printf("拿不到数据\n");
+        return NULL;
+    }
+    // 0x81 Fin | Text
+    // 0x88 Fin | Close 
+    if (ch != 0x81)
+    {
+        // 不是文本全跳过 
+        return NULL;
+    }
+
+    bool bMask = false;
+    // 长度 
+    unsigned int mask = 0;
+    unsigned long long payload_len = 0;
+    if (recv(s, (char*)&ch, 1, 0) < 0)
+    {
+        return NULL;
+    }
+
+    payload_len = (unsigned char)(ch&0x7F);
+    bMask = ((ch&0x80) == 0x80);
+    if ( payload_len == 0x7E )
+    {
+        unsigned short v = 0;
+        recv(s, (char*)&v, 2, 0);
+        payload_len = ntohs(v);
+    }
+    else if ( payload_len == 0x7F )
+    {
+        LARGE_INTEGER la1;
+        LARGE_INTEGER la2;
+        unsigned long long m = 0;
+        recv(s, (char*)&m, 8, 0);
+        la1.QuadPart = m;
+        la2.LowPart = ntohl(la1.HighPart);
+        la2.HighPart = ntohl(la1.LowPart);
+        payload_len = la2.QuadPart;
+    }
+
+    // mask 
+    if (bMask)
+    {
+        recv(s, (char*)&mask, 4, 0);
+    }
+
+    // 读数据 
+    char* data = (char*)malloc(payload_len + 2);
+    if (data)
+    {
+        unsigned long long l = 0;
+        memset(data, 0, payload_len+2);
+        while(l < payload_len)
+        {
+            int n = recv(s, data+l, payload_len-l, 0);
+            if (n < 0)
+            {
+                break;
+            }
+            l += n;
+        }
+
+        // 解码 
+        if (bMask)
+        {
+            for (unsigned long long i=0; i<payload_len; i++)
+            {
+                data[i] ^= ((mask>>((i%4)*8))&0xFF);
+            }
+        }
+    }
+    return data;
+}
+void send_websocket(SOCKET s, char* data, unsigned long len)
+{
+    int buf_len = len;
+    bool bMask = false;
+
+    if (len < 126)
+    {
+        buf_len += 1 + 1;
+    }
+    else if (len <= 0xFFFF)
+    {
+        buf_len += 1 + 1 + 2;
+    }
+    else
+    {
+        buf_len += 1 + 1 + 8;
+    }
+    if (bMask)
+    {
+        buf_len += 4;
+    }
+
+    unsigned char* buf = (unsigned char*)malloc(buf_len);
+    if (buf == NULL)
+    {
+        return;
+    }
+
+    // flags 
+    buf[0] = 0x81;
+    // len 
+    if (len < 126)
+    {
+        // + mask 
+        buf[1] = len;
+        
+    }
+    else if ( len <= 0xFFFF )
+    {
+        buf[1] = 0x7E;
+        unsigned short blen = ntohs(len);
+        memcpy(buf+2, &blen, 2);
+    }
+    else
+    {
+        LARGE_INTEGER la;
+        buf[1] = 0x7F;
+        la.HighPart = ntohl(len&0xFFFFFFFF);
+        la.LowPart = ntohl((len>>32)&0xFFFFFFFF);
+        memcpy(buf+2, (char*)&la.QuadPart, 8);
+    }
+
+    // mask 
+    if (bMask)
+    {
+        buf[1] |= 0x80;
+
+        unsigned int mask = ((rand()%0xFE + 1)<<24) | ((rand()%0xFE + 1)<<16) | ((rand()%0xFE + 1)<<8) | (rand()%0xFE + 1);
+        memcpy(buf+buf_len-len-4, (char*)&mask, 4);
+        for (unsigned long i=0; i<len; i++)
+        {
+            buf[buf_len-len+i] = data[i] ^ ((mask>>((i%4)*8))&0xFF);
+        }
+    }
+    else
+    {
+        memcpy(buf+buf_len-len, data, len);
+    }
+
+    send(s, (char*)buf, buf_len, 0);
+    Sleep(5);
+}
+void close_websocket(SOCKET s)
+{
+    // 关闭websocket 
+    send(s, "\x88\x02\x03\xe8", 4, 0);
+}
 void MonitorWebSocket(SOCKET s)
 {
+    srand((unsigned int)time(NULL));
     while(TRUE)
     {
-        ;
+        char* data = recv_websocket(s);
+        if (data == NULL)
+        {
+            break;
+        }
+        printf("%s\n", data);
+        MFREE(data);
+
+        send_websocket(s, "hello world!", 12);
     }
+    close_websocket(s);    
 }
 
 // 服务器完成请求 
