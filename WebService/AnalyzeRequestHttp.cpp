@@ -12,40 +12,40 @@ RequestHeaderInfo::RequestHeaderInfo(SOCKET s)
     m_data_len = 0;
     m_post_data = NULL;
 
-    m_request_file = NULL;
+    m_request_path = NULL;
     m_request_command = NULL;
 
-    m_accept_language = NULL;
-    m_accept_encoding = NULL;
-    m_content_type = NULL;
-    m_user_agent = NULL;
-    m_cookies = NULL;
-    m_accept = NULL;
+    m_client_socket = s;
 
-    AnalyzeHttpData(s);
+    _InitializeListHead(&m_head_compare.next);
+
+    AnalyzeRequestData();
 }
 
 RequestHeaderInfo::~RequestHeaderInfo()
 {
+    while(!_IsListEmpty(&m_head_compare.next))
+    {
+        PLIST_ENTRY li = _RemoveTailList(&m_head_compare.next);
+        pkvp pvp = CONTAINING_RECORD(li, kvp, next);
+        MFREE(pvp->key);
+        MFREE(pvp->value)
+        MFREE(pvp);
+    }
+
     MFREE(m_linedata);
     MFREE(m_key);
     MFREE(m_value);
     MFREE(m_post_data);
-    MFREE(m_request_file);
-    MFREE(m_accept_language);
-    MFREE(m_accept_encoding);
-    MFREE(m_content_type);
-    MFREE(m_user_agent);
-    MFREE(m_cookies);
-    MFREE(m_accept);
+    MFREE(m_request_path);
 }
 
 // 获取头部请求的一行数据 
-unsigned int RequestHeaderInfo::GetLine(SOCKET s)
+unsigned int RequestHeaderInfo::GetLine()
 {
     unsigned int i = 0;
     unsigned int uisize = START_SIZE;
-    char *szstr = (char*)malloc(uisize);
+    char *szstr = (char*)MALLC(uisize);
     memset(szstr, 0, uisize);
 
     MFREE(m_linedata);
@@ -53,7 +53,7 @@ unsigned int RequestHeaderInfo::GetLine(SOCKET s)
     {
         while (i<uisize)
         {
-            recv(s, szstr+i, 1, 0);
+            recv(m_client_socket, szstr+i, 1, 0);
             if (szstr[i] == '\n')
             {
                 szstr[i] = '\0';
@@ -69,7 +69,7 @@ unsigned int RequestHeaderInfo::GetLine(SOCKET s)
                 i++;
             }
         }
-        char* tmp = (char*)malloc(uisize*2);
+        char* tmp = (char*)MALLC(uisize*2);
         if (tmp)
         {
             memset(tmp, 0, uisize*2);
@@ -83,9 +83,9 @@ unsigned int RequestHeaderInfo::GetLine(SOCKET s)
 }
 
 // 获取头部请求的一个键值对 
-bool RequestHeaderInfo::GetCompare(SOCKET s)
+bool RequestHeaderInfo::GetCompare()
 {
-    unsigned int counts = GetLine(s);
+    unsigned int counts = GetLine();
     if (counts==0)
     {
         return false;
@@ -99,14 +99,18 @@ bool RequestHeaderInfo::GetCompare(SOCKET s)
 
     MFREE(m_key);
     MFREE(m_value);
-    m_key = (char*)malloc(counts+1);
-    m_value = (char*)malloc(counts+1);
+    m_key = (char*)MALLC(counts+1);
+    m_value = (char*)MALLC(counts+1);
     if (m_key && m_value)
     {
         memset(m_key, 0, counts+1);
         memset(m_value, 0, counts+1);
         memcpy(m_key, m_linedata, p-m_linedata);
-        strcpy(m_value, p+2);
+        // 略过空格 
+        do{
+            p++;
+        }while (*p!='\0' && *p!=' ');
+        strcpy(m_value, p);
         return true;
     }
 
@@ -115,14 +119,24 @@ bool RequestHeaderInfo::GetCompare(SOCKET s)
     return false;
 }
 
-// 解析请求数据 
-bool RequestHeaderInfo::AnalyzeHttpData(SOCKET s)
+// 头部方法 
+bool RequestHeaderInfo::AnalyzeMethod()
 {
-    bool bret = false; 
     // 获取第一行看是 GET 还是 POST 
-    unsigned int uiLen = GetLine(s); 
+    unsigned int uiLen = GetLine(); 
     if (uiLen!=0)
     {
+#ifdef _DEBUG
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        printf("[%04u-%02u-%02u %02u:%02u:%02u] %s\n", 
+            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, 
+            "==================================================================================");
+        printf("[%04u-%02u-%02u %02u:%02u:%02u] %s\n", 
+            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, 
+            m_linedata);
+#endif
+
         if ( memicmp(m_linedata, "GET", 3) == 0 )
         {
             m_ispost = false;
@@ -131,7 +145,6 @@ bool RequestHeaderInfo::AnalyzeHttpData(SOCKET s)
         {
             m_ispost = true;
             m_data_len = 0;
-            MFREE(m_post_data);
         }
 
         int skip = 0;
@@ -147,19 +160,19 @@ bool RequestHeaderInfo::AnalyzeHttpData(SOCKET s)
         }
 
         // 获取请求的虚拟目录文件 
-        m_request_file = (char*)malloc(uiLen);
-        if (m_request_file)
+        m_request_path = (char*)MALLC(uiLen);
+        if (m_request_path)
         {
             int i=0;
-            memset(m_request_file, 0, uiLen);
+            memset(m_request_path, 0, uiLen);
             while(m_linedata[skip+i] != ' ' && m_linedata[skip+i] != '\0')
             {
-                m_request_file[i] = m_linedata[skip+i];
+                m_request_path[i] = m_linedata[skip+i];
                 i++;
             }
 
             // 参数获取(不转编码,等用的时候再处理) 
-            char* cmdstr = strchr(m_request_file, '?');
+            char* cmdstr = strchr(m_request_path, '?');
             if (cmdstr)
             {
                 *cmdstr++ = '\0';
@@ -174,48 +187,104 @@ bool RequestHeaderInfo::AnalyzeHttpData(SOCKET s)
                 }
             }
         }
-    }
-    
-    while(GetCompare(s))
-    {
-        if (stricmp(m_key, "Content-Length") == 0)
-        {
-            m_data_len = strtoul(m_value, NULL, 10);
-        }
-        else if (stricmp(m_key, "Accept-Language") == 0)
-        {
-            m_accept_language = strdup(m_value);
-        }
-        else if (stricmp(m_key, "Accept-Encoding") == 0)
-        {
-            m_accept_encoding = strdup(m_value);
-        }
-        else if (stricmp(m_key, "User-Agent") == 0)
-        {
-            m_user_agent = strdup(m_value);
-        }
-        else if (stricmp(m_key, "Cookie") == 0)
-        {
-            m_cookies = strdup(m_value);
-        }
-        else if (stricmp(m_key, "Accept") == 0)
-        {
-            m_accept = strdup(m_value);
-        }
-        else if (stricmp(m_key, "Content-Type") == 0)
-        {
-            m_content_type = strdup(m_value);
-        }
-        bret = true;
+
+        return true;
     }
 
-    if (m_ispost && m_data_len!=0)
+    return false;
+}
+
+// 头部 
+void RequestHeaderInfo::AnalyzeHeadPair()
+{
+    while(GetCompare())
     {
-        m_post_data = (char*)malloc(m_data_len+1);
+        pkvp pvp = (pkvp)malloc(sizeof(kvp));
+        if (pvp)
+        {
+#ifdef _DEBUG
+            SYSTEMTIME st;
+            GetLocalTime(&st);
+            printf("[%04u-%02u-%02u %02u:%02u:%02u] %s: %s\n", 
+                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, 
+                m_key, m_value);
+#endif
+            if (stricmp(m_key, "Content-Length") == 0)
+            {
+                m_data_len = strtoul(m_value, NULL, 10);
+            }
+
+            memset(pvp, 0, sizeof(kvp));
+            pvp->key = strdup(m_key);
+            pvp->value = strdup(m_value);
+            _InsertTailList(&m_head_compare.next, &pvp->next);
+        }
+    }
+}
+
+// 获取头部键值 
+const char* RequestHeaderInfo::GetHeader(const char* key)
+{
+    for (
+            PLIST_ENTRY it = m_head_compare.next.Flink; 
+            it != &m_head_compare.next; 
+            it = it->Flink
+        )
+    {
+        pkvp pvp = CONTAINING_RECORD(it, kvp, next);
+        if (stricmp(pvp->key, key) == 0)
+        {
+            return pvp->value;
+        }
+    }
+    return "";
+}
+
+// 头部请求附加数据 
+unsigned long RequestHeaderInfo::AnalyzeHeadContent()
+{
+    if (m_data_len!=0)
+    {
+        MFREE(m_post_data);
+        m_post_data = (char*)MALLC(m_data_len+1);
         if (m_post_data)
         {
-            recv(s, m_post_data, m_data_len, 0);
+            unsigned long l = 0;
+            while(l < m_data_len)
+            {
+                int n = recv(m_client_socket, m_post_data+l, m_data_len-l, 0);
+                if (n == SOCKET_ERROR)
+                {
+                    break;
+                }
+                l += n;
+            }
+#ifdef _DEBUG
+            if (l == m_data_len)
+            {
+                printf("err: read Content Data(%u/%u)\n", l, m_data_len);
+            }
+#endif
+
+            return l;
         }
+    }
+
+    return 0;
+}
+
+// 解析请求数据 
+bool RequestHeaderInfo::AnalyzeRequestData()
+{
+    bool bret = false;
+    
+    if (AnalyzeMethod())
+    {
+        // 键值对数据 
+        AnalyzeHeadPair();
+        // 如果有附加数据,取出来 
+        AnalyzeHeadContent();
+        bret = true;
     }
     return bret;
 }

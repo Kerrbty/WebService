@@ -27,7 +27,7 @@ char* UrlDecode(const char* src, unsigned int srclen, char* dst, unsigned int ds
     // ×ª»»%ºÅ 
     const char* p = src;
     char* q = dst;
-    while(p<src+srclen)
+    while(p < src+srclen)
     {
         if (*p == '%')
         {
@@ -53,6 +53,7 @@ char* UrlDecode(const char* src, unsigned int srclen, char* dst, unsigned int ds
     {
         MultiByteToWideChar(CP_UTF8, 0, dst, -1, pwText, uSize);
         WideCharToMultiByte(CP_ACP, 0, pwText, -1, dst, dstlen, NULL, NULL);
+        free(pwText);
     }
     return dst;
 }
