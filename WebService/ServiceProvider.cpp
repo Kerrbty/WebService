@@ -618,13 +618,15 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
     }
 
     send(s, (char*)buf, buf_len, 0);
-    Sleep(5);
+    Sleep(1);
 }
 void close_websocket(SOCKET s)
 {
     // 关闭websocket 
     send(s, "\x88\x02\x03\xe8", 4, 0);
 }
+
+// 处理 websocket 通讯 
 void MonitorWebSocket(SOCKET s)
 {
     srand((unsigned int)time(NULL));
