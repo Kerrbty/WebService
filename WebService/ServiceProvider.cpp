@@ -472,14 +472,14 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 // websocket 各种处理 
 typedef struct _ws_ext
 {
-    SOCKET s;
+    unsigned int s;
     bool bExit;
 }ws_ext, *pws_ext;
 #define WEBSOCKET_TIME_OUT   20 
 static __time64_t last_msg_time = NULL;
 static void websocket_ping(SOCKET s)
 {
-    char buf[12] = {0};
+    unsigned char buf[12] = {0};
     buf[0] = 0x80|0x9;
     buf[1] = 0x04;
     for (int i=0; i<4; i++)
@@ -493,7 +493,7 @@ static void websocket_pong(SOCKET s, unsigned long ping)
 {
     bool bMask = false;
     unsigned int mask = 0;
-    char buf[12] = {0};
+    unsigned char buf[12] = {0};
 
     buf[0] = 0x80|0x0A;
     buf[1] = 0x04;
@@ -528,8 +528,14 @@ static DWORD WINAPI WebSocketPingPongProc(LPVOID lparam)
         __time64_t now_t = _time64(NULL);
         if (last_msg_time + WEBSOCKET_TIME_OUT <= now_t)
         {
-            last_msg_time = now_t;
             websocket_ping(_ws->s);
+        }
+
+        // 超过5秒没有回复pong，对方已经死掉，退出 
+        if (last_msg_time + WEBSOCKET_TIME_OUT + 5 <= now_t)
+        {
+            _ws->bExit = true;
+            break;
         }
     }
     return 0;
@@ -663,11 +669,11 @@ char* recv_websocket(SOCKET s)
     {
         return NULL;
     }
-    unsigned long long payload_len = (unsigned char)(ch&0x7F);
+    unsigned long payload_len = (unsigned char)(ch&0x7F);
     bMask = ((ch&0x80) == 0x80);
     if (payload_len >= 126)
     {
-        payload_len = _get_data_len(s, payload_len);
+        payload_len = (unsigned long)_get_data_len(s, payload_len);
     }
 
     // mask 
@@ -680,7 +686,7 @@ char* recv_websocket(SOCKET s)
     char* data = (char*)malloc(payload_len + 2);
     if (data)
     {
-        unsigned long long l = 0;
+        unsigned long l = 0;
         memset(data, 0, payload_len+2);
         while(l < payload_len)
         {
@@ -695,7 +701,7 @@ char* recv_websocket(SOCKET s)
         // 解码 
         if (bMask)
         {
-            for (unsigned long long i=0; i<payload_len; i++)
+            for (unsigned long i=0; i<payload_len; i++)
             {
                 data[i] ^= ((mask>>((i%4)*8))&0xFF);
             }
@@ -737,13 +743,13 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
     if (len < 126)
     {
         // + mask 
-        buf[1] = len;
+        buf[1] = (unsigned char)len;
         
     }
     else if ( len <= 0xFFFF )
     {
         buf[1] = 0x7E;
-        unsigned short blen = ntohs(len);
+        u_short blen = ntohs((u_short)len);
         memcpy(buf+2, &blen, 2);
     }
     else
@@ -751,7 +757,7 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
         LARGE_INTEGER la;
         buf[1] = 0x7F;
         la.HighPart = ntohl(len&0xFFFFFFFF);
-        la.LowPart = ntohl((len>>32)&0xFFFFFFFF);
+        la.LowPart = 0;
         memcpy(buf+2, (char*)&la.QuadPart, 8);
     }
 
@@ -772,7 +778,6 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
         memcpy(buf+buf_len-len, data, len);
     }
 
-    last_msg_time = _time64(NULL);
     send(s, (char*)buf, buf_len, 0);
     Sleep(1);
 }

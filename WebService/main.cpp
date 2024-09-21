@@ -165,7 +165,7 @@ static DWORD WINAPI MonitorParentProcess(LPVOID lparam)
 
 static DWORD StringToDword(PTCH str)
 {
-    if ( memicmp(str, TEXT("0x"), 2*sizeof(TCHAR)) == 0 )
+    if ( _memicmp(str, TEXT("0x"), 2*sizeof(TCHAR)) == 0 )
     {
         return _tcstol(str+2, NULL, 16);
     }

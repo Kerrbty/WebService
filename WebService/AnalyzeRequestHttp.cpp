@@ -110,7 +110,7 @@ bool RequestHeaderInfo::GetCompare()
         do{
             p++;
         }while (*p!='\0' && *p==' ');
-        strcpy(m_value, p);
+        strcpy_s(m_value, counts, p);
         return true;
     }
 
@@ -137,11 +137,11 @@ bool RequestHeaderInfo::AnalyzeMethod()
             m_linedata);
 #endif
 
-        if ( memicmp(m_linedata, "GET", 3) == 0 )
+        if ( _memicmp(m_linedata, "GET", 3) == 0 )
         {
             m_ispost = false;
         }
-        else if (memicmp(m_linedata, "POST", 4) == 0)
+        else if (_memicmp(m_linedata, "POST", 4) == 0)
         {
             m_ispost = true;
             m_data_len = 0;
@@ -210,14 +210,14 @@ void RequestHeaderInfo::AnalyzeHeadPair()
                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, 
                 m_key, m_value);
 #endif
-            if (stricmp(m_key, "Content-Length") == 0)
+            if (_stricmp(m_key, "Content-Length") == 0)
             {
                 m_data_len = strtoul(m_value, NULL, 10);
             }
 
             memset(pvp, 0, sizeof(kvp));
-            pvp->key = strdup(m_key);
-            pvp->value = strdup(m_value);
+            pvp->key = _strdup(m_key);
+            pvp->value = _strdup(m_value);
             _InsertTailList(&m_head_compare.next, &pvp->next);
         }
     }
@@ -233,7 +233,7 @@ const char* RequestHeaderInfo::GetHeader(const char* key)
         )
     {
         pkvp pvp = CONTAINING_RECORD(it, kvp, next);
-        if (stricmp(pvp->key, key) == 0)
+        if (_stricmp(pvp->key, key) == 0)
         {
             return pvp->value;
         }
