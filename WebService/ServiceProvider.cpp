@@ -469,41 +469,76 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 }
 
 // websocket 各种处理 
-char* recv_websocket(SOCKET s)
+#define WEBSOCKET_TIME_OUT   20 
+static __time64_t last_msg_time = NULL;
+static void websocket_ping(SOCKET s)
 {
-    // 标志位 FIN = 0x80 | Opcode = 0x01 
-    unsigned char ch = '\0';
-    if (recv(s, (char*)&ch, 1, 0) < 0)
+    char buf[12] = {0};
+    buf[0] = 0x80|0x9;
+    buf[1] = 0x04;
+    for (int i=0; i<4; i++)
     {
-        printf("拿不到数据\n");
-        return NULL;
+        buf[i+2] = rand()%0xFE + 1;
     }
-    // 0x81 Fin | Text
-    // 0x88 Fin | Close 
-    if (ch != 0x81)
-    {
-        // 不是文本全跳过 
-        return NULL;
-    }
-
+    send(s, (char*)buf, 6, 0);
+    Sleep(1);
+}
+static void websocket_pong(SOCKET s, unsigned long ping)
+{
     bool bMask = false;
-    // 长度 
     unsigned int mask = 0;
-    unsigned long long payload_len = 0;
-    if (recv(s, (char*)&ch, 1, 0) < 0)
+    char buf[12] = {0};
+
+    buf[0] = 0x80|0x0A;
+    buf[1] = 0x04;
+    if (bMask)
     {
-        return NULL;
+        buf[1] |= 0x80;
+        mask = ((rand()%0xFE + 1)<<24) | ((rand()%0xFE + 1)<<16) | ((rand()%0xFE + 1)<<8) | (rand()%0xFE + 1);
     }
 
-    payload_len = (unsigned char)(ch&0x7F);
-    bMask = ((ch&0x80) == 0x80);
-    if ( payload_len == 0x7E )
+    if (bMask)
+    {
+        memcpy(buf+2, &mask, 4);
+        ping ^= mask;
+        memcpy(buf+2+4, &ping, 4);
+        send(s, (char*)buf, 10, 0);
+    }
+    else
+    {
+        memcpy(buf+2, &ping, 4);
+        send(s, (char*)buf, 6, 0);
+    }
+
+    Sleep(1);
+}
+DWORD WINAPI WebSocketPingPongProc(LPVOID lparam)
+{
+    SOCKET s = (SOCKET)lparam;
+    last_msg_time = _time64(NULL);
+    while (TRUE)
+    {
+        Sleep(500);
+        __time64_t now_t = _time64(NULL);
+        if (last_msg_time + WEBSOCKET_TIME_OUT < now_t)
+        {
+            last_msg_time = now_t;
+            websocket_ping(s);
+        }
+    }
+    return 0;
+}
+unsigned long long _get_data_len(SOCKET s, unsigned long long flaglen)
+{
+    unsigned long long payload_len = 0;
+
+    if ( flaglen == 0x7E )
     {
         unsigned short v = 0;
         recv(s, (char*)&v, 2, 0);
         payload_len = ntohs(v);
     }
-    else if ( payload_len == 0x7F )
+    else if ( flaglen == 0x7F )
     {
         LARGE_INTEGER la1;
         LARGE_INTEGER la2;
@@ -513,6 +548,120 @@ char* recv_websocket(SOCKET s)
         la2.LowPart = ntohl(la1.HighPart);
         la2.HighPart = ntohl(la1.LowPart);
         payload_len = la2.QuadPart;
+    }
+
+    return payload_len;
+}
+unsigned char _get_command(SOCKET s)
+{
+    unsigned char ch = '\0';
+    while (TRUE)
+    {
+        if (recv(s, (char*)&ch, 1, 0) < 0)
+        {
+            printf("拿不到数据\n");
+            return NULL;
+        }
+
+        last_msg_time = _time64(NULL);
+
+        // 0x81 Fin | Text
+        // 0x88 Fin | Close 
+        // 0x89 Fin | Ping 
+        // 0x8A Fin | Pong 
+
+        if (ch == 0x81)
+        {
+            break;
+        }
+
+        // ping 
+        if (ch == 0x89)
+        {
+            unsigned int mask = 0;
+            if (recv(s, (char*)&ch, 1, 0) < 0)
+            {
+                return NULL;
+            }
+            unsigned long long payload_len = (unsigned char)(ch&0x7F);
+            if ((ch&0x80) == 0x80)
+            {
+                // 附加数据 
+                if (payload_len >= 126)
+                {
+                    payload_len = _get_data_len(s, payload_len);
+                }
+
+                // 有掩码 
+                recv(s, (char*)&mask, 4, 0);
+            }
+
+            if (payload_len == 4)
+            {
+                int ping = 0;
+                recv(s, (char*)&ping ,4, 0);
+                ping ^= mask;
+                websocket_pong(s, ping);
+            }
+            else
+            {
+                for (int i=0; i<payload_len; i++)
+                {
+                    recv(s, (char*)&ch, 1, 0);
+                }
+            }
+
+        }
+        else if (ch == 0x88)
+        {
+            return NULL;
+        }
+        else
+        {
+            unsigned int mask = 0;
+            if (recv(s, (char*)&ch, 1, 0) < 0)
+            {
+                return NULL;
+            }
+            unsigned long long payload_len = (unsigned char)(ch&0x7F);
+            if ((ch&0x80) == 0x80)
+            {
+                // 附加数据 
+                if (payload_len >= 126)
+                {
+                    payload_len = _get_data_len(s, payload_len);
+                }
+
+                // 有掩码 
+                recv(s, (char*)&mask, 4, 0);
+            }
+
+            for (int i=0; i<payload_len; i++)
+            {
+                recv(s, (char*)&ch, 1, 0);
+            }
+        }
+    }
+
+    return ch;
+}
+static char* recv_websocket(SOCKET s)
+{
+    // 标志位 FIN = 0x80 | Opcode = 0x01 
+    unsigned char ch = _get_command(s);
+    bool bMask = false;
+
+    // 长度 
+    unsigned int mask = 0;
+    if (recv(s, (char*)&ch, 1, 0) < 0)
+    {
+        return NULL;
+    }
+    unsigned long long payload_len = (unsigned char)(ch&0x7F);
+    bMask = ((ch&0x80) == 0x80);
+    if (payload_len >= 126)
+    {
+        payload_len = _get_data_len(s, payload_len);
     }
 
     // mask 
@@ -548,7 +697,7 @@ char* recv_websocket(SOCKET s)
     }
     return data;
 }
-void send_websocket(SOCKET s, char* data, unsigned long len)
+static void send_websocket(SOCKET s, char* data, unsigned long len)
 {
     int buf_len = len;
     bool bMask = false;
@@ -617,10 +766,11 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
         memcpy(buf+buf_len-len, data, len);
     }
 
+    last_msg_time = _time64(NULL);
     send(s, (char*)buf, buf_len, 0);
     Sleep(1);
 }
-void close_websocket(SOCKET s)
+static void close_websocket(SOCKET s)
 {
     // 关闭websocket 
     send(s, "\x88\x02\x03\xe8", 4, 0);
@@ -680,7 +830,10 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
     {
         if ( UpgradeSocket(s, request) )
         {
+            HANDLE hPingPongThread = CreateThread(NULL, 0, WebSocketPingPongProc, (void*)s, 0, NULL);
             MonitorWebSocket(s);
+            TerminateProcess(hPingPongThread, 0);
+            CloseHandle(hPingPongThread);
         }
     }
     else if (IsRequestStaticFile(newrequestfile))
