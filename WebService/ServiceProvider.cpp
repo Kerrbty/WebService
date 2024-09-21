@@ -520,7 +520,7 @@ DWORD WINAPI WebSocketPingPongProc(LPVOID lparam)
     {
         Sleep(500);
         __time64_t now_t = _time64(NULL);
-        if (last_msg_time + WEBSOCKET_TIME_OUT < now_t)
+        if (last_msg_time + WEBSOCKET_TIME_OUT <= now_t)
         {
             last_msg_time = now_t;
             websocket_ping(s);
