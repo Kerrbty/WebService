@@ -571,7 +571,14 @@ static unsigned char _get_command(SOCKET s)
     {
         if (recv(s, (char*)&ch, 1, 0) < 0)
         {
-            printf("拿不到数据\n");
+            fprintf(stderr, "拿不到数据\n");
+            return NULL;
+        }
+
+        // 没有 Fin 标志位,或者 Reserved 标志位不为 0  
+        if ((ch&0xF0) != 0x80)
+        {
+            fprintf(stderr, "数据有问题,断开\n");
             return NULL;
         }
 
@@ -831,6 +838,9 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
                 if (hPingPongThread != NULL)
                 {
                     WebSocketHandle_Loop(s);
+#ifdef _DEBUG
+                    printf("断开websocket\n");
+#endif
                     _ws->bExit = true;
                     Sleep(1000);
                     TerminateProcess(hPingPongThread, 0);
