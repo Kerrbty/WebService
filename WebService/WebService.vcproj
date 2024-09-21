@@ -186,6 +186,10 @@
 				RelativePath=".\ServiceProvider.cpp"
 				>
 			</File>
+			<File
+				RelativePath=".\WebSocketLoop.cpp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Í·ÎÄ¼þ"
@@ -206,6 +210,10 @@
 			</File>
 			<File
 				RelativePath=".\ServiceProvider.h"
+				>
+			</File>
+			<File
+				RelativePath=".\WebSocketLoop.h"
 				>
 			</File>
 		</Filter>

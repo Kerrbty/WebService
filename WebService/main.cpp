@@ -8,6 +8,7 @@
 #include "common.h"
 #include <Windows.h>
 #include <tchar.h>
+#include <time.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -39,6 +40,7 @@ static INT WebService()
     WSADATA WsData; 
     WORD wVersionRequested = MAKEWORD(1, 1); 
     WSAStartup(wVersionRequested, &WsData);
+    srand((unsigned int)time(NULL));
     do 
     {
         SOCKET ss = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

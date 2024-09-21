@@ -1,6 +1,7 @@
 #include "ServiceProvider.h"
 #include "Base64/Base64.h"
 #include "common.h"
+#include "WebSocketLoop.h"
 #include <Shlwapi.h>
 #include <stdio.h>
 #include <time.h>
@@ -469,6 +470,11 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 }
 
 // websocket 各种处理 
+typedef struct _ws_ext
+{
+    SOCKET s;
+    bool bExit;
+}ws_ext, *pws_ext;
 #define WEBSOCKET_TIME_OUT   20 
 static __time64_t last_msg_time = NULL;
 static void websocket_ping(SOCKET s)
@@ -512,23 +518,23 @@ static void websocket_pong(SOCKET s, unsigned long ping)
 
     Sleep(1);
 }
-DWORD WINAPI WebSocketPingPongProc(LPVOID lparam)
+static DWORD WINAPI WebSocketPingPongProc(LPVOID lparam)
 {
-    SOCKET s = (SOCKET)lparam;
+    pws_ext _ws = (pws_ext)lparam;
     last_msg_time = _time64(NULL);
-    while (TRUE)
+    while (!_ws->bExit)
     {
         Sleep(500);
         __time64_t now_t = _time64(NULL);
         if (last_msg_time + WEBSOCKET_TIME_OUT <= now_t)
         {
             last_msg_time = now_t;
-            websocket_ping(s);
+            websocket_ping(_ws->s);
         }
     }
     return 0;
 }
-unsigned long long _get_data_len(SOCKET s, unsigned long long flaglen)
+static unsigned long long _get_data_len(SOCKET s, unsigned long long flaglen)
 {
     unsigned long long payload_len = 0;
 
@@ -552,7 +558,7 @@ unsigned long long _get_data_len(SOCKET s, unsigned long long flaglen)
 
     return payload_len;
 }
-unsigned char _get_command(SOCKET s)
+static unsigned char _get_command(SOCKET s)
 {
     unsigned char ch = '\0';
     while (TRUE)
@@ -645,7 +651,7 @@ unsigned char _get_command(SOCKET s)
 
     return ch;
 }
-static char* recv_websocket(SOCKET s)
+char* recv_websocket(SOCKET s)
 {
     // 标志位 FIN = 0x80 | Opcode = 0x01 
     unsigned char ch = _get_command(s);
@@ -697,7 +703,7 @@ static char* recv_websocket(SOCKET s)
     }
     return data;
 }
-static void send_websocket(SOCKET s, char* data, unsigned long len)
+void send_websocket(SOCKET s, char* data, unsigned long len)
 {
     int buf_len = len;
     bool bMask = false;
@@ -776,25 +782,6 @@ static void close_websocket(SOCKET s)
     send(s, "\x88\x02\x03\xe8", 4, 0);
 }
 
-// 处理 websocket 通讯 
-void MonitorWebSocket(SOCKET s)
-{
-    srand((unsigned int)time(NULL));
-    while(TRUE)
-    {
-        char* data = recv_websocket(s);
-        if (data == NULL)
-        {
-            break;
-        }
-        printf("%s\n", data);
-        MFREE(data);
-
-        send_websocket(s, "hello world!", 12);
-    }
-    close_websocket(s);    
-}
-
 // 服务器完成请求 
 bool ResponseData(SOCKET s, RequestHeaderInfo *request)
 {
@@ -830,10 +817,23 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
     {
         if ( UpgradeSocket(s, request) )
         {
-            HANDLE hPingPongThread = CreateThread(NULL, 0, WebSocketPingPongProc, (void*)s, 0, NULL);
-            MonitorWebSocket(s);
-            TerminateProcess(hPingPongThread, 0);
-            CloseHandle(hPingPongThread);
+            pws_ext _ws = (pws_ext)malloc(sizeof(ws_ext));
+            if (_ws)
+            {
+                _ws->s = s;
+                _ws->bExit = false;
+                HANDLE hPingPongThread = CreateThread(NULL, 0, WebSocketPingPongProc, _ws, 0, NULL);
+                if (hPingPongThread != NULL)
+                {
+                    WebSocketHandle_Loop(s);
+                    _ws->bExit = true;
+                    Sleep(1000);
+                    TerminateProcess(hPingPongThread, 0);
+                    CloseHandle(hPingPongThread);
+                }
+                MFREE(_ws);
+            }
+            close_websocket(s);
         }
     }
     else if (IsRequestStaticFile(newrequestfile))
