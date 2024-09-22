@@ -8,9 +8,9 @@
 #pragma comment(lib, "shlwapi")
 
 #define WEBSOCKET_GUID   "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-#define WEB_DIR     "www"
-#define CGI_DIR     "www\\cgi"
-#define CGI_START_SIZE  4096
+#define WEB_DIR          "www"
+#define CGI_DIR          "www\\cgi"
+#define CGI_START_SIZE   4096
 
 static char* g_web_root_path = NULL;
 
@@ -154,10 +154,10 @@ static const char* Mons[] = {
 static void SendServiceInfo(SOCKET s, bool isWS = false)
 {
     // 服务器工具信息 
-    const char* service_info = "Server: WebSercice/1.0\r\n";
+    const char* service_info = "Server: WebSercice/1.2\r\n";
     if (isWS)
     {
-        service_info = "Server: WebSercice/1.1 websockets/1.0.0\r\n";
+        service_info = "Server: WebSercice/1.2 websockets/13.0.0\r\n";
     }
     send(s, service_info, strlen(service_info), 0);
 
@@ -414,9 +414,11 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
                 {
                     wsprintfA(contentlen, "Content-Length: %u\r\n\r\n", bodylen);
                     send(s, contentlen, strlen(contentlen), 0);
+                    MFREE(contentlen);
                 }
                 // 发送正文 
                 send(s, szstr, bodylen, 0);
+                MFREE(szstr);
             }
         }
 

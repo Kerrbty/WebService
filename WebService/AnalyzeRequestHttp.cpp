@@ -200,7 +200,7 @@ void RequestHeaderInfo::AnalyzeHeadPair()
 {
     while(GetCompare())
     {
-        pkvp pvp = (pkvp)malloc(sizeof(kvp));
+        pkvp pvp = (pkvp)MALLC(sizeof(kvp));
         if (pvp)
         {
 #ifdef _DEBUG
