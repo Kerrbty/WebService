@@ -86,3 +86,45 @@ bool calcBufferSha1(unsigned char* buffer, unsigned long len, unsigned char out[
         CryptReleaseContext(hProv, 0);
     return retval;
 }
+
+// ≈–∂œ «∑Òutf-8¥Æ 
+bool isUTF8(const void* data, unsigned int length) 
+{
+    if (data == NULL || length == 0)
+    {
+        return false;
+    }
+
+    int charByteCounter = 1;
+    unsigned char* pData = (unsigned char*)data;
+
+    for (int i = 0; i < length; i++) {
+        byte currentByte = pData[i];
+
+        if (charByteCounter == 1) {
+            if ((currentByte & 0x80) == 0) {
+                continue;
+            }
+
+            while (((currentByte << 1) & 0x80) != 0) {
+                charByteCounter++;
+                currentByte <<= 1;
+            }
+
+            if (charByteCounter < 2 || charByteCounter > 6) {
+                return false;
+            }
+        } else {
+            if ((currentByte & 0xC0) != 0x80) {
+                return false;
+            }
+            charByteCounter--;
+        }
+    }
+
+    if (charByteCounter > 1) {
+        return false;
+    }
+
+    return true;
+}

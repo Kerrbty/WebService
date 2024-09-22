@@ -432,7 +432,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
     return bret;
 }
 
-// websocket 处理 
+// 升级为 websocket 处理 
 static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 {
     const char* pWebSocketKey = request->GetHeader("Sec-WebSocket-Key");
@@ -469,7 +469,7 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
     return true;
 }
 
-// websocket 各种处理 
+// websocket 通讯 
 typedef struct _ws_ext
 {
     unsigned int s;
@@ -564,57 +564,76 @@ static unsigned long long _get_data_len(SOCKET s, unsigned long long flaglen)
 
     return payload_len;
 }
+static int _get_data_info(SOCKET s, unsigned int &mask, unsigned long long &payload_len)
+{
+    unsigned char ch = 0;
+    if (recv(s, (char*)&ch, 1, 0) < 0)
+    {
+        return -1;
+    }
+
+    // 附加数据长度 
+    payload_len = (unsigned char)(ch&0x7F);
+    if (payload_len >= 126)
+    {
+        payload_len = _get_data_len(s, payload_len);
+    }
+
+    // 是否有mask标志位 
+    if ((ch&0x80) == 0x80)
+    {
+        // 有掩码 
+        recv(s, (char*)&mask, 4, 0);
+    }
+    return 0;
+}
 static unsigned char _get_command(SOCKET s)
 {
-    unsigned char ch = '\0';
+    unsigned char Opcode = '\0';
     while (TRUE)
     {
+        unsigned char ch = '\0';
         if (recv(s, (char*)&ch, 1, 0) < 0)
         {
             fprintf(stderr, "拿不到数据\n");
-            return NULL;
+            return Opcode;
         }
 
-        // 没有 Fin 标志位,或者 Reserved 标志位不为 0  
+        // 一定要有 Fin 标志位,Reserved 必须为0 
         if ((ch&0xF0) != 0x80)
         {
             fprintf(stderr, "数据有问题,断开\n");
-            return NULL;
+            return Opcode;
         }
 
         last_msg_time = _time64(NULL);
 
         // 0x81 Fin | Text
+        // 0x82 Fin | Bin 
+        // 0x83~0x87 保留 
         // 0x88 Fin | Close 
         // 0x89 Fin | Ping 
         // 0x8A Fin | Pong 
-
-        if (ch == 0x81)
+        // 0x8B~0x8F 保留 
+        Opcode = (unsigned char)(ch&0x0F);
+        if (Opcode == 0x01 || Opcode == 0x02)
         {
+            // 要去收取数据 
             break;
         }
 
-        // ping 
-        if (ch == 0x89)
+        // 
+        unsigned int mask = 0;
+        unsigned long long payload_len = 0;
+        if ( _get_data_info(s, mask, payload_len) < 0 )
         {
-            unsigned int mask = 0;
-            if (recv(s, (char*)&ch, 1, 0) < 0)
-            {
-                return NULL;
-            }
-            unsigned long long payload_len = (unsigned char)(ch&0x7F);
-            if ((ch&0x80) == 0x80)
-            {
-                // 附加数据 
-                if (payload_len >= 126)
-                {
-                    payload_len = _get_data_len(s, payload_len);
-                }
+            return '\0';
+        }
 
-                // 有掩码 
-                recv(s, (char*)&mask, 4, 0);
-            }
-
+        // ping 0x09 
+        if (Opcode == 0x09)
+        {
+            // 根据长度获取数据 
             if (payload_len == 4)
             {
                 int ping = 0;
@@ -631,30 +650,15 @@ static unsigned char _get_command(SOCKET s)
             }
 
         }
-        else if (ch == 0x88)
+        // Close 0x08 
+        else if (Opcode == 0x08)
         {
-            return NULL;
+            // 退出 
+            return '\0';
         }
         else
         {
-            unsigned int mask = 0;
-            if (recv(s, (char*)&ch, 1, 0) < 0)
-            {
-                return NULL;
-            }
-            unsigned long long payload_len = (unsigned char)(ch&0x7F);
-            if ((ch&0x80) == 0x80)
-            {
-                // 附加数据 
-                if (payload_len >= 126)
-                {
-                    payload_len = _get_data_len(s, payload_len);
-                }
-
-                // 有掩码 
-                recv(s, (char*)&mask, 4, 0);
-            }
-
+            // 这里只剩Pong数据了，丢掉就行，校验它干啥子 
             for (int i=0; i<payload_len; i++)
             {
                 recv(s, (char*)&ch, 1, 0);
@@ -662,42 +666,37 @@ static unsigned char _get_command(SOCKET s)
         }
     }
 
-    return ch;
+    return Opcode;
 }
 char* recv_websocket(SOCKET s)
 {
-    // 标志位 FIN = 0x80 | Opcode = 0x01 
-    unsigned char ch = _get_command(s);
+    // 标志位返回0,Close或者socket错误 
+    unsigned char Opcode = _get_command(s);
+    if (Opcode == '\0')
+    {
+        return NULL;
+    }
+
     bool bMask = false;
 
     // 长度 
     unsigned int mask = 0;
-    if (recv(s, (char*)&ch, 1, 0) < 0)
+    unsigned long long payload_len = 0;
+    if ( _get_data_info(s, mask, payload_len) < 0 )
     {
         return NULL;
     }
-    unsigned long payload_len = (unsigned char)(ch&0x7F);
-    bMask = ((ch&0x80) == 0x80);
-    if (payload_len >= 126)
-    {
-        payload_len = (unsigned long)_get_data_len(s, payload_len);
-    }
-
-    // mask 
-    if (bMask)
-    {
-        recv(s, (char*)&mask, 4, 0);
-    }
+    if (mask != 0) bMask = true;
 
     // 读数据 
-    char* data = (char*)malloc(payload_len + 2);
+    char* data = (char*)malloc((unsigned long)payload_len + 2);
     if (data)
     {
         unsigned long l = 0;
-        memset(data, 0, payload_len+2);
-        while(l < payload_len)
+        memset(data, 0, (unsigned long)payload_len+2);
+        while(l < (unsigned long)payload_len)
         {
-            int n = recv(s, data+l, payload_len-l, 0);
+            int n = recv(s, data+l, (unsigned long)payload_len-l, 0);
             if (n < 0)
             {
                 break;
@@ -708,7 +707,7 @@ char* recv_websocket(SOCKET s)
         // 解码 
         if (bMask)
         {
-            for (unsigned long i=0; i<payload_len; i++)
+            for (unsigned long i=0; i<(unsigned long)payload_len; i++)
             {
                 data[i] ^= ((mask>>((i%4)*8))&0xFF);
             }
@@ -745,7 +744,17 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
     }
 
     // flags 
-    buf[0] = 0x81;
+    // 如果数据中都是UTF-8编码数据就用 1 Text、否则 2 Binary 
+    if ( isUTF8(data, len) )
+    {
+        buf[0] = 0x81;
+    }
+    else
+    {
+        buf[0] = 0x82;
+    }
+    
+
     // len 
     if (len < 126)
     {
