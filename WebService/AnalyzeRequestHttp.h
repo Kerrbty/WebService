@@ -3,8 +3,8 @@
 #define _ANALYZE_REQUEST_HEADER_DATA_HEAD_
 #include <WinSock2.h>
 #include "List.h"
-#define MALLC(_size) malloc(_size)
-#define MFREE(_a)  if(_a){free(_a); _a=NULL;}
+#define MALLOC(_a)  malloc(_a)
+#define MFREE(_a)  if(_a) {free(_a); _a=NULL;}
 
 typedef struct _key_value 
 {

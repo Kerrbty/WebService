@@ -18,14 +18,14 @@ static char* g_web_root_path = NULL;
 static bool ChgLocalPath(const char* szPathFile, const char* szDirName, char* szOutPath, unsigned int dwlen)
 {
     bool bret = false;
-    if (szPathFile == NULL || szOutPath == NULL || dwlen == 0)
+    if (szPathFile == NULL || szDirName == NULL || szOutPath == NULL || dwlen == 0)
     {
         return false;
     }
 
     if (g_web_root_path == NULL)
     {
-        g_web_root_path = (char*)malloc(MAX_PATH*2);
+        g_web_root_path = (char*)MALLOC(MAX_PATH*2);
         if (g_web_root_path)
         {
             GetModuleFileNameA(GetModuleHandle(NULL), g_web_root_path, MAX_PATH);
@@ -44,8 +44,8 @@ static bool ChgLocalPath(const char* szPathFile, const char* szDirName, char* sz
     memset(szOutPath, 0, dwlen);
     strcpy_s(szOutPath, dwlen, g_web_root_path);
     strcat_s(szOutPath, dwlen, szDirName);
-    unsigned int len = strlen(szOutPath);
-    int i=0;
+    size_t len = strlen(szOutPath);
+    int  i= 0;
     while(len < dwlen)
     {
         if (szPathFile[i] == '\0' || 
@@ -79,7 +79,7 @@ static bool IsRequestStaticFile(const char* szPathFile)
     }
 
     unsigned int needlen = strlen(szPathFile)+MAX_PATH*2;
-    char* fullpath = (char*)malloc(needlen);
+    char* fullpath = (char*)MALLOC(needlen);
     if( ChgLocalPath(szPathFile, WEB_DIR, fullpath, needlen) )
     {
         // 读取文件 
@@ -103,7 +103,7 @@ static bool IsRequestCGIFile(const char* szPathFile)
         return bret;
     }
     unsigned int needlen = strlen(szPathFile)+MAX_PATH*2;
-    char* fullpath = (char*)malloc(needlen);
+    char* fullpath = (char*)MALLOC(needlen);
     if( ChgLocalPath(szPathFile, CGI_DIR, fullpath, needlen) )
     {
 #ifdef _DEBUG
@@ -162,7 +162,7 @@ static void SendServiceInfo(SOCKET s, bool isWS = false)
     send(s, service_info, strlen(service_info), 0);
 
     // 应答时间 
-    char* data = (char*)malloc(1024);
+    char* data = (char*)MALLOC(1024);
     if (data)
     {
         SYSTEMTIME systime;
@@ -199,7 +199,7 @@ static bool SendFileType(SOCKET s, const char* szPathFile)
     }
 
     unsigned int needlen = strlen(szPathFile)+MAX_PATH*2;
-    char* fullpath = (char*)malloc(needlen);
+    char* fullpath = (char*)MALLOC(needlen);
     if( ChgLocalPath(szPathFile, WEB_DIR, fullpath, needlen) )
     {
         const char* fileext = PathFindExtensionA(fullpath);
@@ -285,14 +285,14 @@ static bool SendPage(SOCKET s, const char* szPathFile)
 
     // 4k 一个块发送 
     const DWORD dwBlockSize = 4*1024;
-    char* buffer = (char*)malloc(dwBlockSize);
+    char* buffer = (char*)MALLOC(dwBlockSize);
     if (buffer == NULL)
     {
         return false;
     }
 
     unsigned int needlen = strlen(szPathFile)+MAX_PATH*2;
-    char* fullpath = (char*)malloc(needlen);
+    char* fullpath = (char*)MALLOC(needlen);
     do 
     {
         if( !ChgLocalPath(szPathFile, WEB_DIR, fullpath, needlen) )
@@ -306,8 +306,8 @@ static bool SendPage(SOCKET s, const char* szPathFile)
         {
             // 发送头部长度 
             DWORD dwFileSize = GetFileSize(hFile, NULL);
-            wsprintfA(buffer, "Content-Length: %u\r\n\r\n", dwFileSize);
-            send(s, buffer, strlen(buffer), 0);
+            int len = wsprintfA(buffer, "Content-Length: %u\r\n\r\n", dwFileSize);
+            send(s, buffer, len, 0);
 
             // 发送文件 
             DWORD dwBytes = 0;
@@ -335,7 +335,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
     }
 
     unsigned int needlen = strlen(szPathFile)+MAX_PATH*2;
-    char* fullpath = (char*)malloc(needlen+2);
+    char* fullpath = (char*)MALLOC(needlen+2);
     fullpath[0] = '"';
     if( ChgLocalPath(szPathFile, CGI_DIR, fullpath+1, needlen) )
     {
@@ -347,7 +347,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
         FILE* fp = NULL;
         if (szCommandLine)
         {
-            char* NewRunCmd = (char*)malloc(strlen(fullpath)+strlen(szCommandLine)+8);
+            char* NewRunCmd = (char*)MALLOC(strlen(fullpath)+strlen(szCommandLine)+8);
             if (NewRunCmd)
             {
                 wsprintfA(NewRunCmd, "%s %s", fullpath, szCommandLine);
@@ -362,7 +362,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
         if (fp)
         {
             unsigned int uisize = CGI_START_SIZE;
-            char *szstr = (char*)malloc(uisize);
+            char *szstr = (char*)MALLOC(uisize);
             memset(szstr, 0, uisize);
             while( !feof( fp ) )
             {
@@ -389,7 +389,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
             {
                 if (ipos>=uisize)
                 {
-                    char* tmp = (char*)malloc(uisize*2);
+                    char* tmp = (char*)MALLOC(uisize*2);
                     if (tmp)
                     {
                         memset(tmp, 0, uisize*2);
@@ -409,7 +409,7 @@ static bool DoSendCGIResult(SOCKET s, const char* szPathFile, const char* szComm
             {
                 // 发送头部长度 
                 unsigned int bodylen = strlen(szstr);
-                char* contentlen = (char*)malloc(64);
+                char* contentlen = (char*)MALLOC(64);
                 if (contentlen)
                 {
                     wsprintfA(contentlen, "Content-Length: %u\r\n\r\n", bodylen);
@@ -445,7 +445,7 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 
     int len = strlen(pWebSocketKey);
     len += sizeof(WEBSOCKET_GUID) + 2;
-    char* serial_websocket_key = (char*)malloc(len);
+    char* serial_websocket_key = (char*)MALLOC(len);
     if (serial_websocket_key)
     {
         const char* response_code = "HTTP/1.1 101 Switching Protocols\r\n";
@@ -467,6 +467,8 @@ static bool UpgradeSocket(SOCKET s, RequestHeaderInfo *request)
 
         SendServiceInfo(s, true);
         send(s, "\r\n", 2, 0);
+
+        MFREE(serial_websocket_key);
     }
     return true;
 }
@@ -576,7 +578,7 @@ static int _get_data_info(SOCKET s, unsigned int &mask, unsigned long long &payl
 
     // 附加数据长度 
     payload_len = (unsigned char)(ch&0x7F);
-    if (payload_len >= 126)
+    if (payload_len >= 0x7E)
     {
         payload_len = _get_data_len(s, payload_len);
     }
@@ -598,14 +600,16 @@ static unsigned char _get_command(SOCKET s)
         if (recv(s, (char*)&ch, 1, 0) < 0)
         {
             fprintf(stderr, "拿不到数据\n");
-            return Opcode;
+            Opcode = '\0';
+            break;
         }
 
         // 一定要有 Fin 标志位,Reserved 必须为0 
         if ((ch&0xF0) != 0x80)
         {
             fprintf(stderr, "数据有问题,断开\n");
-            return Opcode;
+            Opcode = '\0';
+            break;
         }
 
         last_msg_time = _time64(NULL);
@@ -629,7 +633,8 @@ static unsigned char _get_command(SOCKET s)
         unsigned long long payload_len = 0;
         if ( _get_data_info(s, mask, payload_len) < 0 )
         {
-            return '\0';
+            Opcode = '\0';
+            break;
         }
 
         // ping 0x09 
@@ -656,7 +661,8 @@ static unsigned char _get_command(SOCKET s)
         else if (Opcode == 0x08)
         {
             // 退出 
-            return '\0';
+            Opcode = '\0';
+            break;
         }
         else
         {
@@ -679,8 +685,6 @@ char* recv_websocket(SOCKET s)
         return NULL;
     }
 
-    bool bMask = false;
-
     // 长度 
     unsigned int mask = 0;
     unsigned long long payload_len = 0;
@@ -688,10 +692,9 @@ char* recv_websocket(SOCKET s)
     {
         return NULL;
     }
-    if (mask != 0) bMask = true;
 
     // 读数据 
-    char* data = (char*)malloc((unsigned long)payload_len + 2);
+    char* data = (char*)MALLOC((unsigned long)payload_len + 2);
     if (data)
     {
         unsigned long l = 0;
@@ -707,7 +710,7 @@ char* recv_websocket(SOCKET s)
         }
 
         // 解码 
-        if (bMask)
+        if (mask != 0)
         {
             for (unsigned long i=0; i<(unsigned long)payload_len; i++)
             {
@@ -739,7 +742,7 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
         buf_len += 4;
     }
 
-    unsigned char* buf = (unsigned char*)malloc(buf_len);
+    unsigned char* buf = (unsigned char*)MALLOC(buf_len);
     if (buf == NULL)
     {
         return;
@@ -758,7 +761,7 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
     
 
     // len 
-    if (len < 126)
+    if (len < 0x7E)
     {
         // + mask 
         buf[1] = (unsigned char)len;
@@ -798,6 +801,7 @@ void send_websocket(SOCKET s, char* data, unsigned long len)
 
     send(s, (char*)buf, buf_len, 0);
     Sleep(1);
+    MFREE(buf);
 }
 static void close_websocket(SOCKET s)
 {
@@ -828,7 +832,7 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
 
     // 获取URL编码并转出成Windows的路径 
     unsigned int len = strlen(requestfile);
-    char* newFile = (char*)malloc(len+MAX_PATH);
+    char* newFile = (char*)MALLOC(len+MAX_PATH);
     if (newFile == NULL)
     {
         return false;
@@ -840,7 +844,7 @@ bool ResponseData(SOCKET s, RequestHeaderInfo *request)
     {
         if ( UpgradeSocket(s, request) )
         {
-            pws_ext _ws = (pws_ext)malloc(sizeof(ws_ext));
+            pws_ext _ws = (pws_ext)MALLOC(sizeof(ws_ext));
             if (_ws)
             {
                 _ws->s = s;

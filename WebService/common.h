@@ -1,5 +1,7 @@
 #ifndef _WEB_SERVER_COMMON_HEADER_HH_H_
 #define _WEB_SERVER_COMMON_HEADER_HH_H_
+#define MALLOC(_a)  malloc(_a)
+#define MFREE(_a)  if(_a) {free(_a); _a=NULL;}
 
 #ifdef _cplusplus
 extern "C" {

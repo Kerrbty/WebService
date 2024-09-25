@@ -1,7 +1,8 @@
 #ifndef _WEB_SOCKET_MESSAGE_HEADER_HH_H_
 #define _WEB_SOCKET_MESSAGE_HEADER_HH_H_
 #include <WinSock2.h>
-#define MFREE(_a)  if(_a){free(_a); _a=NULL;}
+#define MALLOC(_a)  malloc(_a)
+#define MFREE(_a)  if(_a) {free(_a); _a=NULL;}
 
 #ifdef _cplusplus
 extern "C" {

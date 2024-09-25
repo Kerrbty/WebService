@@ -45,7 +45,7 @@ unsigned int RequestHeaderInfo::GetLine()
 {
     unsigned int i = 0;
     unsigned int uisize = START_SIZE;
-    char *szstr = (char*)MALLC(uisize);
+    char *szstr = (char*)MALLOC(uisize);
     memset(szstr, 0, uisize);
 
     MFREE(m_linedata);
@@ -69,7 +69,7 @@ unsigned int RequestHeaderInfo::GetLine()
                 i++;
             }
         }
-        char* tmp = (char*)MALLC(uisize*2);
+        char* tmp = (char*)MALLOC(uisize*2);
         if (tmp)
         {
             memset(tmp, 0, uisize*2);
@@ -79,6 +79,8 @@ unsigned int RequestHeaderInfo::GetLine()
         szstr = tmp;
         uisize = uisize*2;
     }
+
+    MFREE(szstr);
     return 0;
 }
 
@@ -99,8 +101,8 @@ bool RequestHeaderInfo::GetCompare()
 
     MFREE(m_key);
     MFREE(m_value);
-    m_key = (char*)MALLC(counts+1);
-    m_value = (char*)MALLC(counts+1);
+    m_key = (char*)MALLOC(counts+1);
+    m_value = (char*)MALLOC(counts+1);
     if (m_key && m_value)
     {
         memset(m_key, 0, counts+1);
@@ -109,7 +111,7 @@ bool RequestHeaderInfo::GetCompare()
         // 略过空格 
         do{
             p++;
-        }while (*p!='\0' && *p==' ');
+        } while (*p == '\t' || *p == ' ');
         strcpy_s(m_value, counts, p);
         return true;
     }
@@ -160,7 +162,7 @@ bool RequestHeaderInfo::AnalyzeMethod()
         }
 
         // 获取请求的虚拟目录文件 
-        m_request_path = (char*)MALLC(uiLen);
+        m_request_path = (char*)MALLOC(uiLen);
         if (m_request_path)
         {
             int i=0;
@@ -200,7 +202,7 @@ void RequestHeaderInfo::AnalyzeHeadPair()
 {
     while(GetCompare())
     {
-        pkvp pvp = (pkvp)MALLC(sizeof(kvp));
+        pkvp pvp = (pkvp)MALLOC(sizeof(kvp));
         if (pvp)
         {
 #ifdef _DEBUG
@@ -247,7 +249,7 @@ unsigned long RequestHeaderInfo::AnalyzeHeadContent()
     if (m_data_len!=0)
     {
         MFREE(m_post_data);
-        m_post_data = (char*)MALLC(m_data_len+1);
+        m_post_data = (char*)MALLOC(m_data_len+1);
         if (m_post_data)
         {
             unsigned long l = 0;
