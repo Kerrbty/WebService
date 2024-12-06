@@ -807,6 +807,22 @@ static void close_websocket(SOCKET s)
 {
     // 关闭websocket 
     send(s, "\x88\x02\x03\xe8", 4, 0);
+    // Payload可选值(十进制): 
+    // 1000 Normal Closure 
+    // 1001 Going Away 
+    // 1002 Protocol Error 
+    // 1003 Unsupported Data 
+    // 1005 No Status Recvd 
+    // 1006 Abnormal Closure 
+    // 1007 Invalid frame payload data 
+    // 1008 Policy Violation 
+    // 1009 Message too big 
+    // 1010 Missing Extension 
+    // 1011 Internal Error 
+    // 1012 Service Restart 
+    // 1013 Try Again Later 
+    // 1014 Bad Gateway 
+    // 1015 TLS Handshake 
 }
 
 // 服务器完成请求 
